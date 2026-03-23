@@ -20,15 +20,18 @@ function Field({ label, children, hint }: { label: string; children: React.React
   );
 }
 
-const makeEmptyForm = (categoryId = "") => ({
+const makeEmptyForm = (mainCategoryId = "", subcategoryId = "") => ({
   name_ar: "",
   name_en: "",
   slug: "",
   description_ar: "",
   description_en: "",
-  category_id: categoryId,
+  main_category_id: mainCategoryId,
+  subcategory_id: subcategoryId,
+  sort_order: 1,
   is_new: false,
   is_visible: true,
+  is_available: true,
   sizes: [{ ...emptySize, label_ar: "عادي", label_en: "Regular", price: 55, is_default: true }],
 });
 
@@ -39,8 +42,11 @@ function cleanProductPayload(source: any) {
     slug: source.slug || slugify(source.name_en || source.name_ar),
     description_ar: source.description_ar || "",
     description_en: source.description_en || "",
-    category_id: source.category_id,
+    main_category_id: source.main_category_id,
+    subcategory_id: source.subcategory_id,
+    sort_order: Number(source.sort_order || 1),
     is_visible: source.is_visible !== false,
+    is_available: source.is_available !== false,
     is_new: !!source.is_new,
     sizes: (source.sizes || []).map((size: any) => ({
       label_ar: size.label_ar || "",
@@ -52,17 +58,16 @@ function cleanProductPayload(source: any) {
 }
 
 export function ProductManager({ initialData, categories }: { initialData: any[]; categories: any[] }) {
-  const rootCategories = useMemo(() => categories.filter((item) => !item.parent_id), [categories]);
+  const rootCategories = useMemo(() => categories.filter((item) => !item.parent_id).sort((a, b) => a.sort_order - b.sort_order), [categories]);
+  const subcategories = useMemo(() => categories.filter((item) => !!item.parent_id).sort((a, b) => a.sort_order - b.sort_order), [categories]);
+
   const [items, setItems] = useState(initialData);
-  const [mainCategoryId, setMainCategoryId] = useState(rootCategories[0]?.id ?? "");
-  const [form, setForm] = useState<any>(makeEmptyForm(categories[0]?.id ?? ""));
+  const [formMainCategoryId, setFormMainCategoryId] = useState(rootCategories[0]?.id ?? "");
+  const [form, setForm] = useState<any>(makeEmptyForm(rootCategories[0]?.id ?? "", subcategories.find((item) => item.parent_id === rootCategories[0]?.id)?.id ?? ""));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<any>(null);
 
-  const subcategoryOptions = useMemo(() => {
-    const linked = categories.filter((item) => item.parent_id === mainCategoryId);
-    return linked.length ? linked : rootCategories.filter((item) => item.id === mainCategoryId);
-  }, [categories, mainCategoryId, rootCategories]);
+  const formSubcategoryOptions = useMemo(() => subcategories.filter((item) => item.parent_id === formMainCategoryId), [subcategories, formMainCategoryId]);
 
   async function refresh() {
     const res = await fetch("/api/admin/products");
@@ -72,6 +77,7 @@ export function ProductManager({ initialData, categories }: { initialData: any[]
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.main_category_id || !form.subcategory_id) return toast.error("اختر قسمًا رئيسيًا وقسمًا فرعيًا للمنتج");
     const res = await fetch("/api/admin/products", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -79,7 +85,8 @@ export function ProductManager({ initialData, categories }: { initialData: any[]
     });
     const result = await res.json().catch(() => null);
     if (!res.ok) return toast.error(result?.error || "فشل إضافة المنتج");
-    setForm(makeEmptyForm(subcategoryOptions[0]?.id ?? rootCategories[0]?.id ?? ""));
+    const fallbackSubcategory = subcategories.find((item) => item.parent_id === formMainCategoryId)?.id ?? "";
+    setForm(makeEmptyForm(formMainCategoryId, fallbackSubcategory));
     await refresh();
     toast.success("تم إضافة المنتج بنجاح");
   }
@@ -92,7 +99,7 @@ export function ProductManager({ initialData, categories }: { initialData: any[]
     toast.success("تم حذف المنتج");
   }
 
-  async function toggle(id: string, isVisible: boolean) {
+  async function toggleVisibility(id: string, isVisible: boolean) {
     const res = await fetch(`/api/admin/products/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -102,6 +109,20 @@ export function ProductManager({ initialData, categories }: { initialData: any[]
     if (!res.ok) return toast.error(result?.error || "فشل الحفظ");
     await refresh();
     toast.success("تم حفظ التغييرات بنجاح");
+  }
+
+  async function toggleAvailability(id: string, isAvailable: boolean) {
+    const item = items.find((row) => row.id === id);
+    if (!item) return;
+    const res = await fetch(`/api/admin/products/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...cleanProductPayload({ ...item, sizes: item.product_sizes }), is_available: !isAvailable }),
+    });
+    const result = await res.json().catch(() => null);
+    if (!res.ok) return toast.error(result?.error || "فشل تحديث التوفر");
+    await refresh();
+    toast.success("تم تحديث التوفر");
   }
 
   async function uploadImage(id: string, file: File) {
@@ -138,18 +159,19 @@ export function ProductManager({ initialData, categories }: { initialData: any[]
   }
 
   useEffect(() => {
-    const initialMain = rootCategories[0]?.id || "";
-    setMainCategoryId(initialMain);
-    const linked = categories.filter((item) => item.parent_id === initialMain);
-    const fallbackId = linked[0]?.id ?? initialMain;
-    setForm((prev: any) => ({ ...prev, category_id: prev.category_id || fallbackId }));
-  }, [categories, rootCategories]);
+    if (!form.main_category_id && rootCategories[0]?.id) {
+      const nextMain = rootCategories[0].id;
+      const nextSubcategory = subcategories.find((item) => item.parent_id === nextMain)?.id ?? "";
+      setFormMainCategoryId(nextMain);
+      setForm(makeEmptyForm(nextMain, nextSubcategory));
+    }
+  }, [form.main_category_id, rootCategories, subcategories]);
 
   useEffect(() => {
-    if (!subcategoryOptions.some((item) => item.id === form.category_id)) {
-      setForm((prev: any) => ({ ...prev, category_id: subcategoryOptions[0]?.id ?? rootCategories.find((item) => item.id === mainCategoryId)?.id ?? "" }));
+    if (formSubcategoryOptions.length && !formSubcategoryOptions.some((item) => item.id === form.subcategory_id)) {
+      setForm((prev: any) => ({ ...prev, subcategory_id: formSubcategoryOptions[0].id, main_category_id: formMainCategoryId }));
     }
-  }, [subcategoryOptions, form.category_id, rootCategories, mainCategoryId]);
+  }, [formSubcategoryOptions, form.subcategory_id, formMainCategoryId]);
 
   function renderSizeEditor(target: any, setTarget: (value: any) => void) {
     return (
@@ -171,65 +193,131 @@ export function ProductManager({ initialData, categories }: { initialData: any[]
     );
   }
 
+  const groupedItems = useMemo(() => {
+    return rootCategories.map((main) => ({
+      main,
+      sections: subcategories
+        .filter((subcategory) => subcategory.parent_id === main.id)
+        .map((subcategory) => ({
+          subcategory,
+          products: items.filter((product) => product.subcategory_id === subcategory.id).sort((a, b) => a.sort_order - b.sort_order || a.name_ar.localeCompare(b.name_ar, "ar")),
+        }))
+        .filter((section) => section.products.length > 0),
+    })).filter((group) => group.sections.length > 0);
+  }, [items, rootCategories, subcategories]);
+
   return (
-    <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
+    <div className="grid gap-6 xl:grid-cols-[440px_1fr]">
       <form onSubmit={submit} className="space-y-4 rounded-[28px] border border-maroon/10 bg-white/90 p-5 shadow-soft">
-        <h3 className="font-serif text-2xl text-maroon">إضافة منتج</h3>
+        <div>
+          <h3 className="font-serif text-2xl text-maroon">إضافة منتج</h3>
+          <p className="mt-1 text-sm leading-6 text-maroon/60">كل منتج يجب أن ينتمي إلى قسم رئيسي ثم قسم فرعي محدد. لا توجد إضافة عشوائية بعد الآن.</p>
+        </div>
         <Field label="اسم المنتج"><Input value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} /></Field>
         <Field label="الاسم بالإنجليزية"><Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} /></Field>
-        <Field label="رابط المنتج بالإنجليزية" hint="مثال: spanish-latte"><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></Field>
-        <Field label="القسم الرئيسي"><Select value={mainCategoryId} onChange={(value) => { setMainCategoryId(value); const linked = categories.filter((item) => item.parent_id === value); setForm({ ...form, category_id: linked[0]?.id ?? value }); }} options={rootCategories.map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
-        <Field label="القسم الفرعي"><Select value={form.category_id} onChange={(value) => setForm({ ...form, category_id: value })} options={subcategoryOptions.map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
+        <Field label="Slug" hint="مثال: spanish-latte"><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></Field>
+        <Field label="القسم الرئيسي"><Select value={formMainCategoryId} onChange={(value) => { setFormMainCategoryId(value); const nextSub = subcategories.find((item) => item.parent_id === value)?.id ?? ""; setForm({ ...form, main_category_id: value, subcategory_id: nextSub }); }} options={rootCategories.map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
+        <Field label="القسم الفرعي"><Select value={form.subcategory_id} onChange={(value) => setForm({ ...form, subcategory_id: value, main_category_id: formMainCategoryId })} options={formSubcategoryOptions.map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
+        <Field label="الترتيب داخل القسم الفرعي"><Input type="number" min={1} value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value || 1) })} /></Field>
         <Field label="الوصف بالعربية"><Textarea value={form.description_ar} onChange={(e) => setForm({ ...form, description_ar: e.target.value })} /></Field>
         <Field label="الوصف بالإنجليزية"><Textarea value={form.description_en} onChange={(e) => setForm({ ...form, description_en: e.target.value })} /></Field>
         <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={form.is_visible} onChange={(e) => setForm({ ...form, is_visible: e.target.checked })} /> ظاهر في الموقع</label>
+        <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={form.is_available} onChange={(e) => setForm({ ...form, is_available: e.target.checked })} /> متاح للطلب</label>
         <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={form.is_new} onChange={(e) => setForm({ ...form, is_new: e.target.checked })} /> شارة NEW</label>
         {renderSizeEditor(form, setForm)}
         <Button type="submit" className="w-full">حفظ المنتج</Button>
       </form>
 
-      <div className="space-y-3 rounded-[28px] border border-maroon/10 bg-white/90 p-5 shadow-soft">
-        {items.map((item) => {
-          const isEditing = editingId === item.id;
-          const parentCategory = categories.find((row) => row.id === item.categories?.parent_id);
-          const editMainId = editing?.main_category_id ?? parentCategory?.id ?? item.category_id;
-          const editSubOptions = categories.filter((row) => row.parent_id === editMainId);
-
-          return (
-            <div key={item.id} className="rounded-2xl border border-maroon/10 bg-[#fffaf8] p-4">
-              {isEditing ? (
-                <div className="space-y-3">
-                  <Field label="اسم المنتج"><Input value={editing.name_ar} onChange={(e) => setEditing({ ...editing, name_ar: e.target.value })} /></Field>
-                  <Field label="الاسم بالإنجليزية"><Input value={editing.name_en} onChange={(e) => setEditing({ ...editing, name_en: e.target.value })} /></Field>
-                  <Field label="رابط المنتج بالإنجليزية"><Input value={editing.slug} onChange={(e) => setEditing({ ...editing, slug: e.target.value })} /></Field>
-                  <Field label="القسم الرئيسي"><Select value={editMainId} onChange={(value) => { const linked = categories.filter((row) => row.parent_id === value); setEditing({ ...editing, main_category_id: value, category_id: linked[0]?.id ?? value }); }} options={rootCategories.map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
-                  <Field label="القسم الفرعي"><Select value={editing.category_id} onChange={(value) => setEditing({ ...editing, category_id: value })} options={(editSubOptions.length ? editSubOptions : rootCategories.filter((row) => row.id === editMainId)).map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
-                  <Field label="الوصف بالعربية"><Textarea value={editing.description_ar ?? ""} onChange={(e) => setEditing({ ...editing, description_ar: e.target.value })} /></Field>
-                  <Field label="الوصف بالإنجليزية"><Textarea value={editing.description_en ?? ""} onChange={(e) => setEditing({ ...editing, description_en: e.target.value })} /></Field>
-                  <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={editing.is_visible} onChange={(e) => setEditing({ ...editing, is_visible: e.target.checked })} /> ظاهر في الموقع</label>
-                  <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={editing.is_new} onChange={(e) => setEditing({ ...editing, is_new: e.target.checked })} /> شارة NEW</label>
-                  {renderSizeEditor(editing, setEditing)}
-                  <div className="flex flex-wrap gap-2"><Button type="button" onClick={saveEdit}>حفظ</Button><Button type="button" variant="outline" onClick={() => { setEditingId(null); setEditing(null); }}>إلغاء</Button></div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-maroon">{item.name_ar}</p>
-                    <p className="text-sm text-maroon/60">{item.name_en}</p>
-                    <p className="text-xs text-maroon/50">{parentCategory ? `${parentCategory.name_ar} ← ${item.categories?.name_ar}` : item.categories?.name_ar}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={() => { setEditingId(item.id); setEditing({ ...makeEmptyForm(item.category_id), ...item, main_category_id: parentCategory?.id ?? item.category_id, sizes: item.product_sizes?.length ? item.product_sizes.map((size: any) => ({ label_ar: size.label_ar, label_en: size.label_en, price: size.price, is_default: size.is_default })) : [{ ...emptySize, label_ar: "عادي", label_en: "Regular", price: 0, is_default: true }] }); }}>تعديل</Button>
-                    <Button type="button" variant="outline" onClick={() => toggle(item.id, item.is_visible)}>{item.is_visible ? "إخفاء" : "إظهار"}</Button>
-                    <label className="inline-flex cursor-pointer items-center rounded-full border border-maroon/15 px-4 py-2 text-sm text-maroon">رفع صورة<input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(item.id, e.target.files[0])} /></label>
-                    {item.media?.public_url ? <Button type="button" variant="outline" onClick={() => deleteImage(item.id)}>حذف الصورة</Button> : null}
-                    <Button type="button" variant="outline" onClick={() => remove(item.id)}>حذف</Button>
-                  </div>
-                </div>
-              )}
+      <div className="space-y-5 rounded-[28px] border border-maroon/10 bg-white/90 p-5 shadow-soft">
+        {editingId && editing ? (
+          <div className="rounded-[24px] border border-maroon/10 bg-[#fffaf8] p-4">
+            <h4 className="mb-3 font-serif text-xl text-maroon">تعديل المنتج</h4>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="اسم المنتج"><Input value={editing.name_ar} onChange={(e) => setEditing({ ...editing, name_ar: e.target.value })} /></Field>
+              <Field label="الاسم بالإنجليزية"><Input value={editing.name_en} onChange={(e) => setEditing({ ...editing, name_en: e.target.value })} /></Field>
+              <Field label="Slug"><Input value={editing.slug} onChange={(e) => setEditing({ ...editing, slug: e.target.value })} /></Field>
+              <Field label="الترتيب"><Input type="number" min={1} value={editing.sort_order ?? 1} onChange={(e) => setEditing({ ...editing, sort_order: Number(e.target.value || 1) })} /></Field>
+              <Field label="القسم الرئيسي"><Select value={editing.main_category_id} onChange={(value) => { const nextSub = subcategories.find((item) => item.parent_id === value)?.id ?? ""; setEditing({ ...editing, main_category_id: value, subcategory_id: nextSub }); }} options={rootCategories.map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
+              <Field label="القسم الفرعي"><Select value={editing.subcategory_id} onChange={(value) => setEditing({ ...editing, subcategory_id: value })} options={subcategories.filter((item) => item.parent_id === editing.main_category_id).map((c) => ({ value: c.id, label: c.name_ar }))} /></Field>
             </div>
-          );
-        })}
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <Field label="الوصف بالعربية"><Textarea value={editing.description_ar ?? ""} onChange={(e) => setEditing({ ...editing, description_ar: e.target.value })} /></Field>
+              <Field label="الوصف بالإنجليزية"><Textarea value={editing.description_en ?? ""} onChange={(e) => setEditing({ ...editing, description_en: e.target.value })} /></Field>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={editing.is_visible} onChange={(e) => setEditing({ ...editing, is_visible: e.target.checked })} /> ظاهر في الموقع</label>
+              <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={editing.is_available} onChange={(e) => setEditing({ ...editing, is_available: e.target.checked })} /> متاح للطلب</label>
+              <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={editing.is_new} onChange={(e) => setEditing({ ...editing, is_new: e.target.checked })} /> شارة NEW</label>
+            </div>
+            <div className="mt-3">{renderSizeEditor(editing, setEditing)}</div>
+            <div className="mt-4 flex flex-wrap gap-2"><Button type="button" onClick={saveEdit}>حفظ</Button><Button type="button" variant="outline" onClick={() => { setEditingId(null); setEditing(null); }}>إلغاء</Button></div>
+          </div>
+        ) : null}
+
+        {groupedItems.map(({ main, sections }) => (
+          <section key={main.id} className="space-y-3">
+            <div className="flex items-center justify-between border-b border-maroon/10 pb-2">
+              <h4 className="font-serif text-2xl text-maroon">{main.name_ar}</h4>
+              <span className="text-sm text-maroon/55">{sections.reduce((count, section) => count + section.products.length, 0)} منتج</span>
+            </div>
+
+            {sections.map(({ subcategory, products }) => (
+              <div key={subcategory.id} className="space-y-3 rounded-[24px] border border-maroon/10 bg-[#fffaf8] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-maroon">{subcategory.name_ar}</p>
+                    <p className="text-xs text-maroon/55">{subcategory.name_en}</p>
+                  </div>
+                  <span className="text-sm text-maroon/50">{products.length}</span>
+                </div>
+
+                {products.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-maroon/10 bg-white p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-maroon">{item.name_ar}</p>
+                          <span className="inline-flex rounded-full bg-[#fff8f5] px-2.5 py-1 text-[11px] font-semibold text-maroon/70">ترتيب #{item.sort_order}</span>
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.is_available ? "bg-[#eef7ef] text-[#23623a]" : "bg-[#fff1f1] text-[#8f2133]"}`}>{item.is_available ? "متاح" : "غير متاح"}</span>
+                        </div>
+                        <p className="text-sm text-maroon/60">{item.name_en}</p>
+                        <p className="text-xs text-maroon/50">{main.name_ar} ← {subcategory.name_ar}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                                                <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingId(item.id);
+                            setEditing({
+                              ...makeEmptyForm(item.main_category_id, item.subcategory_id),
+                              ...item,
+                              sizes: item.product_sizes?.length
+                                ? item.product_sizes.map((size: any) => ({
+                                    label_ar: size.label_ar,
+                                    label_en: size.label_en,
+                                    price: size.price,
+                                    is_default: size.is_default,
+                                  }))
+                                : [{ ...emptySize, label_ar: "عادي", label_en: "Regular", price: 0, is_default: true }],
+                            });
+                          }}
+                        >
+                          تعديل
+                        </Button>
+<Button type="button" variant="outline" onClick={() => toggleVisibility(item.id, item.is_visible)}>{item.is_visible ? "إخفاء" : "إظهار"}</Button>
+                        <Button type="button" variant="outline" onClick={() => toggleAvailability(item.id, item.is_available)}>{item.is_available ? "تعطيل التوفر" : "تفعيل التوفر"}</Button>
+                        <label className="inline-flex cursor-pointer items-center rounded-full border border-maroon/15 px-4 py-2 text-sm text-maroon">رفع صورة<input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(item.id, e.target.files[0])} /></label>
+                        {item.media?.public_url ? <Button type="button" variant="outline" onClick={() => deleteImage(item.id)}>حذف الصورة</Button> : null}
+                        <Button type="button" variant="outline" onClick={() => remove(item.id)}>حذف</Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </section>
+        ))}
       </div>
     </div>
   );

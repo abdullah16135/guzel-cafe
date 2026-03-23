@@ -1,5 +1,14 @@
 export type Locale = "ar" | "en";
 
+export type Media = {
+  id: string;
+  bucket: string;
+  path: string;
+  public_url: string | null;
+  alt_ar: string | null;
+  alt_en: string | null;
+};
+
 export type Category = {
   id: string;
   slug: string;
@@ -26,29 +35,25 @@ export type ProductSize = {
   is_default: boolean;
 };
 
-export type Media = {
-  id: string;
-  bucket: string;
-  path: string;
-  public_url: string | null;
-  alt_ar: string | null;
-  alt_en: string | null;
-};
-
 export type Product = {
   id: string;
   slug: string;
   category_id: string;
+  main_category_id: string;
+  subcategory_id: string;
   media_id?: string | null;
   name_ar: string;
   name_en: string;
   description_ar: string | null;
   description_en: string | null;
+  sort_order: number;
   is_visible: boolean;
+  is_available: boolean;
   is_featured: boolean;
   is_new: boolean;
   created_at: string;
-  categories?: Category;
+  main_category?: Category | null;
+  subcategory?: Category | null;
   product_sizes?: ProductSize[];
   media?: Media | null;
 };
@@ -106,4 +111,25 @@ export type CafeSettings = {
   force_single_language: boolean;
   offers_empty_behavior?: "hide" | "message" | null;
   home_primary_section?: "menu" | "offers" | null;
+};
+
+export type MenuSubcategoryGroup = {
+  id: string;
+  slug: string;
+  label: string;
+  description?: string | null;
+  media?: Media | null;
+  sort_order: number;
+  products: Product[];
+};
+
+export type MenuMainCategoryGroup = {
+  id: string;
+  slug: string;
+  label: string;
+  description?: string | null;
+  media?: Media | null;
+  sort_order: number;
+  products_count: number;
+  subcategories: MenuSubcategoryGroup[];
 };

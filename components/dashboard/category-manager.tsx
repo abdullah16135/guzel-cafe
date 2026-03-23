@@ -26,6 +26,7 @@ const emptyForm = {
   description_ar: "",
   description_en: "",
   parent_id: "",
+  sort_order: 1,
   is_visible: true,
 };
 
@@ -37,8 +38,54 @@ function cleanCategoryPayload(source: any) {
     description_ar: source.description_ar || "",
     description_en: source.description_en || "",
     parent_id: source.parent_id || null,
+    sort_order: Number(source.sort_order || 1),
     is_visible: source.is_visible !== false,
   };
+}
+
+function CategoryCard({
+  item,
+  parentName,
+  canMoveUp,
+  canMoveDown,
+  onMove,
+  onEdit,
+  onToggle,
+  onDelete,
+  onUploadImage,
+  onDeleteImage,
+}: any) {
+  return (
+    <div className="rounded-2xl border border-maroon/10 bg-[#fffaf8] p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 gap-4">
+          <div className="relative h-20 w-20 overflow-hidden rounded-2xl bg-[#f7ece7]">
+            {item.media?.public_url ? <Image src={item.media.public_url} alt={item.name_ar} fill className="object-cover" sizes="80px" /> : null}
+          </div>
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold text-maroon">{item.name_ar}</p>
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.parent_id ? "bg-[#fff3ef] text-maroon" : "bg-[#f2f6ff] text-[#314b7d]"}`}>
+                {item.parent_id ? "قسم فرعي" : "قسم رئيسي"}
+              </span>
+              <span className="inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-maroon/70">ترتيب #{item.sort_order}</span>
+            </div>
+            <p className="text-sm text-maroon/60">{item.name_en}</p>
+            <p className="text-xs text-maroon/50">{parentName ? `تابع لـ ${parentName}` : "يظهر كقسم رئيسي في المنيو"}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => onMove(item.id, "up")} disabled={!canMoveUp}>↑</Button>
+          <Button type="button" variant="outline" onClick={() => onMove(item.id, "down")} disabled={!canMoveDown}>↓</Button>
+          <Button type="button" variant="outline" onClick={() => onEdit(item)}>تعديل</Button>
+          <Button type="button" variant="outline" onClick={() => onToggle(item.id, item.is_visible)}>{item.is_visible ? "إخفاء" : "إظهار"}</Button>
+          <label className="inline-flex cursor-pointer items-center rounded-full border border-maroon/15 px-4 py-2 text-sm text-maroon">رفع صورة<input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && onUploadImage(item.id, e.target.files[0])} /></label>
+          {item.media?.public_url ? <Button type="button" variant="outline" onClick={() => onDeleteImage(item.id)}>حذف الصورة</Button> : null}
+          <Button type="button" variant="outline" onClick={() => onDelete(item.id)}>حذف</Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function CategoryManager({ initialData }: { initialData: any[] }) {
@@ -47,10 +94,19 @@ export function CategoryManager({ initialData }: { initialData: any[] }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<any>(null);
 
-  const parentOptions = useMemo(
-    () => [{ value: "", label: "بدون - قسم رئيسي" }, ...items.filter((item) => !item.parent_id).map((item) => ({ value: item.id, label: item.name_ar }))],
-    [items]
-  );
+  const mainCategories = useMemo(() => items.filter((item) => !item.parent_id).sort((a, b) => a.sort_order - b.sort_order), [items]);
+  const subcategories = useMemo(() => items.filter((item) => !!item.parent_id).sort((a, b) => a.sort_order - b.sort_order), [items]);
+  const parentOptions = useMemo(() => [{ value: "", label: "قسم رئيسي" }, ...mainCategories.map((item) => ({ value: item.id, label: item.name_ar }))], [mainCategories]);
+
+  function getSiblingInfo(item: any) {
+    const siblings = items.filter((row) => (row.parent_id ?? null) === (item.parent_id ?? null)).sort((a, b) => a.sort_order - b.sort_order);
+    const index = siblings.findIndex((row) => row.id === item.id);
+    return {
+      canMoveUp: index > 0,
+      canMoveDown: index !== -1 && index < siblings.length - 1,
+      parentName: mainCategories.find((row) => row.id === item.parent_id)?.name_ar,
+    };
+  }
 
   async function refresh() {
     const res = await fetch("/api/admin/categories");
@@ -136,79 +192,100 @@ export function CategoryManager({ initialData }: { initialData: any[] }) {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+    <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
       <form onSubmit={submit} className="space-y-4 rounded-[28px] border border-maroon/10 bg-white/90 p-5 shadow-soft">
-        <h3 className="font-serif text-2xl text-maroon">إضافة قسم</h3>
-        <Field label="اسم القسم">
-          <Input value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} />
+        <div>
+          <h3 className="font-serif text-2xl text-maroon">إضافة قسم</h3>
+          <p className="mt-1 text-sm leading-6 text-maroon/60">أنشئ قسمًا رئيسيًا أولًا، ثم اربط به قسمًا فرعيًا واضحًا لاحتواء المنتجات.</p>
+        </div>
+        <Field label="نوع القسم">
+          <Select value={form.parent_id ? "sub" : "main"} onChange={(value) => setForm({ ...form, parent_id: value === "main" ? "" : form.parent_id })} options={[{ value: "main", label: "قسم رئيسي" }, { value: "sub", label: "قسم فرعي" }]} />
         </Field>
-        <Field label="الاسم بالإنجليزية">
-          <Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} />
-        </Field>
-        <Field label="رابط القسم بالإنجليزية" hint="مثال: drinks أو hot-coffee">
-          <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
-        </Field>
-        <Field label="القسم الرئيسي">
+        <Field label="اسم القسم بالعربية"><Input value={form.name_ar} onChange={(e) => setForm({ ...form, name_ar: e.target.value })} /></Field>
+        <Field label="اسم القسم بالإنجليزية"><Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} /></Field>
+        <Field label="Slug" hint="مثال: drinks أو iced-coffee"><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></Field>
+        <Field label="القسم الرئيسي الأب">
           <Select value={form.parent_id} onChange={(value) => setForm({ ...form, parent_id: value })} options={parentOptions} />
         </Field>
-        <Field label="الوصف بالعربية">
-          <Textarea value={form.description_ar} onChange={(e) => setForm({ ...form, description_ar: e.target.value })} />
-        </Field>
-        <Field label="الوصف بالإنجليزية">
-          <Textarea value={form.description_en} onChange={(e) => setForm({ ...form, description_en: e.target.value })} />
-        </Field>
+        <Field label="الترتيب"><Input type="number" min={1} value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value || 1) })} /></Field>
+        <Field label="الوصف بالعربية"><Textarea value={form.description_ar} onChange={(e) => setForm({ ...form, description_ar: e.target.value })} /></Field>
+        <Field label="الوصف بالإنجليزية"><Textarea value={form.description_en} onChange={(e) => setForm({ ...form, description_en: e.target.value })} /></Field>
         <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={form.is_visible} onChange={(e) => setForm({ ...form, is_visible: e.target.checked })} /> ظاهر في الموقع</label>
         <Button type="submit" className="w-full">حفظ القسم</Button>
       </form>
 
-      <div className="rounded-[28px] border border-maroon/10 bg-white/90 p-5 shadow-soft">
-        <div className="space-y-3">
-          {items.map((item, index) => {
-            const isEditing = editingId === item.id;
-            const parentName = items.find((row) => row.id === item.parent_id)?.name_ar;
-            return (
-              <div key={item.id} className="rounded-2xl border border-maroon/10 bg-[#fffaf8] p-4">
-                {isEditing ? (
-                  <div className="space-y-3">
-                    <Field label="اسم القسم"><Input value={editing.name_ar ?? ""} onChange={(e) => setEditing({ ...editing, name_ar: e.target.value })} /></Field>
-                    <Field label="الاسم بالإنجليزية"><Input value={editing.name_en ?? ""} onChange={(e) => setEditing({ ...editing, name_en: e.target.value })} /></Field>
-                    <Field label="رابط القسم بالإنجليزية"><Input value={editing.slug ?? ""} onChange={(e) => setEditing({ ...editing, slug: e.target.value })} /></Field>
-                    <Field label="القسم الرئيسي"><Select value={editing.parent_id ?? ""} onChange={(value) => setEditing({ ...editing, parent_id: value })} options={parentOptions.filter((option) => option.value !== item.id)} /></Field>
-                    <Field label="الوصف بالعربية"><Textarea value={editing.description_ar ?? ""} onChange={(e) => setEditing({ ...editing, description_ar: e.target.value })} /></Field>
-                    <Field label="الوصف بالإنجليزية"><Textarea value={editing.description_en ?? ""} onChange={(e) => setEditing({ ...editing, description_en: e.target.value })} /></Field>
-                    <label className="flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={editing.is_visible !== false} onChange={(e) => setEditing({ ...editing, is_visible: e.target.checked })} /> ظاهر في الموقع</label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" onClick={() => saveEdit(item.id)}>حفظ</Button>
-                      <Button type="button" variant="outline" onClick={() => { setEditingId(null); setEditing(null); }}>إلغاء</Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="flex min-w-0 gap-4">
-                      <div className="relative h-20 w-20 overflow-hidden rounded-2xl bg-[#f7ece7]">
-                        {item.media?.public_url ? <Image src={item.media.public_url} alt={item.name_ar} fill className="object-cover" sizes="80px" /> : null}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-maroon">{item.name_ar}</p>
-                        <p className="text-sm text-maroon/60">{item.name_en}</p>
-                        <p className="text-xs text-maroon/50">{parentName ? `تابع لـ ${parentName}` : "قسم رئيسي"}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" onClick={() => move(item.id, "up")} disabled={index === 0}>↑</Button>
-                      <Button type="button" variant="outline" onClick={() => move(item.id, "down")} disabled={index === items.length - 1}>↓</Button>
-                      <Button type="button" variant="outline" onClick={() => { setEditingId(item.id); setEditing({ ...emptyForm, ...item, parent_id: item.parent_id ?? "" }); }}>تعديل</Button>
-                      <Button type="button" variant="outline" onClick={() => toggle(item.id, item.is_visible)}>{item.is_visible ? "إخفاء" : "إظهار"}</Button>
-                      <label className="inline-flex cursor-pointer items-center rounded-full border border-maroon/15 px-4 py-2 text-sm text-maroon">رفع صورة<input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(item.id, e.target.files[0])} /></label>
-                      {item.media?.public_url ? <Button type="button" variant="outline" onClick={() => deleteImage(item.id)}>حذف الصورة</Button> : null}
-                      <Button type="button" variant="outline" onClick={() => remove(item.id)}>حذف</Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      <div className="space-y-6 rounded-[28px] border border-maroon/10 bg-white/90 p-5 shadow-soft">
+        {editingId && editing ? (
+          <div className="rounded-[24px] border border-maroon/10 bg-[#fffaf8] p-4">
+            <h4 className="mb-3 font-serif text-xl text-maroon">تعديل القسم</h4>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="اسم القسم بالعربية"><Input value={editing.name_ar ?? ""} onChange={(e) => setEditing({ ...editing, name_ar: e.target.value })} /></Field>
+              <Field label="اسم القسم بالإنجليزية"><Input value={editing.name_en ?? ""} onChange={(e) => setEditing({ ...editing, name_en: e.target.value })} /></Field>
+              <Field label="Slug"><Input value={editing.slug ?? ""} onChange={(e) => setEditing({ ...editing, slug: e.target.value })} /></Field>
+              <Field label="القسم الرئيسي الأب"><Select value={editing.parent_id ?? ""} onChange={(value) => setEditing({ ...editing, parent_id: value })} options={parentOptions.filter((option) => option.value !== editing.id)} /></Field>
+              <Field label="الترتيب"><Input type="number" min={1} value={editing.sort_order ?? 1} onChange={(e) => setEditing({ ...editing, sort_order: Number(e.target.value || 1) })} /></Field>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <Field label="الوصف بالعربية"><Textarea value={editing.description_ar ?? ""} onChange={(e) => setEditing({ ...editing, description_ar: e.target.value })} /></Field>
+              <Field label="الوصف بالإنجليزية"><Textarea value={editing.description_en ?? ""} onChange={(e) => setEditing({ ...editing, description_en: e.target.value })} /></Field>
+            </div>
+            <label className="mt-3 flex items-center gap-2 text-sm text-maroon"><input type="checkbox" checked={editing.is_visible !== false} onChange={(e) => setEditing({ ...editing, is_visible: e.target.checked })} /> ظاهر في الموقع</label>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="button" onClick={() => saveEdit(editing.id)}>حفظ</Button>
+              <Button type="button" variant="outline" onClick={() => { setEditingId(null); setEditing(null); }}>إلغاء</Button>
+            </div>
+          </div>
+        ) : null}
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="font-serif text-xl text-maroon">الأقسام الرئيسية</h4>
+            <span className="text-sm text-maroon/55">{mainCategories.length}</span>
+          </div>
+          <div className="space-y-3">
+            {mainCategories.map((item) => {
+              const siblingInfo = getSiblingInfo(item);
+              return (
+                <CategoryCard
+                  key={item.id}
+                  item={item}
+                  {...siblingInfo}
+                  onMove={move}
+                  onEdit={(value: any) => { setEditingId(value.id); setEditing({ ...emptyForm, ...value, parent_id: value.parent_id ?? "" }); }}
+                  onToggle={toggle}
+                  onDelete={remove}
+                  onUploadImage={uploadImage}
+                  onDeleteImage={deleteImage}
+                />
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-3 border-t border-maroon/10 pt-5">
+          <div className="flex items-center justify-between">
+            <h4 className="font-serif text-xl text-maroon">الأقسام الفرعية</h4>
+            <span className="text-sm text-maroon/55">{subcategories.length}</span>
+          </div>
+          <div className="space-y-3">
+            {subcategories.map((item) => {
+              const siblingInfo = getSiblingInfo(item);
+              return (
+                <CategoryCard
+                  key={item.id}
+                  item={item}
+                  {...siblingInfo}
+                  onMove={move}
+                  onEdit={(value: any) => { setEditingId(value.id); setEditing({ ...emptyForm, ...value, parent_id: value.parent_id ?? "" }); }}
+                  onToggle={toggle}
+                  onDelete={remove}
+                  onUploadImage={uploadImage}
+                  onDeleteImage={deleteImage}
+                />
+              );
+            })}
+          </div>
+        </section>
       </div>
     </div>
   );

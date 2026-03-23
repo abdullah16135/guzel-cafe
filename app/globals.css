@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: auto;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply min-h-screen bg-cream text-maroon antialiased;
+  overflow-x: clip;
+  background-image:
+    radial-gradient(circle at top, rgba(126, 20, 42, 0.06), transparent 22%),
+    linear-gradient(180deg, #fff8f0 0%, #f8ece6 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(115, 18, 38, 0.05) 0 2px, transparent 2px),
+    radial-gradient(circle at 75% 75%, rgba(201, 169, 110, 0.05) 0 2px, transparent 2px);
+  background-size: 42px 42px;
+}
+
+.font-serif {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+img {
+  max-width: 100%;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

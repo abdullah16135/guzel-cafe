@@ -12,7 +12,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const product = await getProductBySlug(slug);
   const name = pickLocaleText(locale, product.name_ar, product.name_en);
   const description = pickLocaleText(locale, product.description_ar, product.description_en);
-  const category = pickLocaleText(locale, product.categories?.name_ar, product.categories?.name_en);
+  const category = pickLocaleText(locale, product.main_category?.name_ar, product.main_category?.name_en);
 
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">

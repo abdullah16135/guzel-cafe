@@ -150,7 +150,7 @@ export function MediaTile({
         </>
       ) : null}
 
-      <div className="pointer-events-none absolute inset-[10px] rounded-[inherit] border border-white/20" />
+      
     </div>
   );
 }

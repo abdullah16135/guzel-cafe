@@ -43,7 +43,7 @@ export default async function OfferDetailsPage({ params }: { params: Promise<{ s
               {(offer.offer_items ?? []).map((item) => (
                 <Link key={item.id} href={`/menu/${item.products?.slug}`} className="rounded-[22px] border border-maroon/10 bg-white p-4 transition hover:bg-blush/40">
                   <p className="font-semibold text-maroon">{pickLocaleText(locale, item.products?.name_ar, item.products?.name_en)}</p>
-                  <p className="mt-1 text-sm text-maroon/60">{pickLocaleText(locale, item.products?.categories?.name_ar, item.products?.categories?.name_en)}</p>
+                  <p className="mt-1 text-sm text-maroon/60">{pickLocaleText(locale, item.products?.main_category?.name_ar, item.products?.main_category?.name_en)}</p>
                 </Link>
               ))}
             </div>

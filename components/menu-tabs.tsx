@@ -10,12 +10,12 @@ import { MediaTile } from "@/components/media-tile";
 import { cn, formatCurrency } from "@/lib/utils";
 import { pickLocaleText } from "@/lib/i18n";
 
-function groupKey(group: MenuMainCategoryGroup) {
-  return group.slug || group.id;
+function groupKey(group?: MenuMainCategoryGroup | null) {
+  return group?.slug || group?.id || "";
 }
 
-function sectionKey(section: { id: string; slug?: string }) {
-  return section.slug || section.id;
+function sectionKey(section?: { id: string; slug?: string } | null) {
+  return section?.slug || section?.id || "";
 }
 
 function OfferStrip({ offer, locale }: { offer: Offer; locale: Locale }) {

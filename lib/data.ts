@@ -212,7 +212,7 @@ function product(params: {
     main_category_id: params.main,
     subcategory_id: params.sub,
     media_id: null,
-    media: localMedia,
+    media: null,
     name_ar: params.name_ar,
     name_en: params.name_en,
     description_ar: params.description_ar ?? null,

@@ -16,6 +16,8 @@ type MediaTileProps = {
   fallbackTone?: "warm" | "dark";
 };
 
+const DEFAULT_FALLBACK_IMAGE = "/images/Guzel.jpg";
+
 function initialsFromLabel(label?: string) {
   if (!label) return "G";
   const words = label.trim().split(/\s+/).filter(Boolean).slice(0, 2);
@@ -38,9 +40,16 @@ export function MediaTile({
   const [isLoaded, setIsLoaded] = useState(false);
 
   const initials = useMemo(() => initialsFromLabel(label), [label]);
-  const resolvedSrc = useMemo(() => resolveMediaUrl(src), [src]);
-  const hasImage = Boolean(resolvedSrc) && !hasError;
-  const shouldUseEager = priority && !shouldProxyMedia(src);
+
+  const resolvedSrc = useMemo(() => {
+    const cleaned = resolveMediaUrl(src);
+    if (!cleaned) return DEFAULT_FALLBACK_IMAGE;
+    return cleaned;
+  }, [src]);
+
+  const finalSrc = hasError ? DEFAULT_FALLBACK_IMAGE : resolvedSrc;
+  const hasCustomImage = finalSrc !== DEFAULT_FALLBACK_IMAGE;
+  const shouldUseEager = priority && !shouldProxyMedia(finalSrc);
 
   useEffect(() => {
     setHasError(false);
@@ -49,7 +58,7 @@ export function MediaTile({
 
   useEffect(() => {
     const img = imgRef.current;
-    if (!img || !resolvedSrc) return;
+    if (!img || !finalSrc) return;
 
     if (img.complete && img.naturalWidth > 0) {
       setIsLoaded(true);
@@ -57,7 +66,12 @@ export function MediaTile({
     }
 
     const handleLoad = () => setIsLoaded(true);
-    const handleError = () => setHasError(true);
+    const handleError = () => {
+      if (finalSrc !== DEFAULT_FALLBACK_IMAGE) {
+        setHasError(true);
+        setIsLoaded(false);
+      }
+    };
 
     img.addEventListener("load", handleLoad);
     img.addEventListener("error", handleError);
@@ -66,7 +80,7 @@ export function MediaTile({
       img.removeEventListener("load", handleLoad);
       img.removeEventListener("error", handleError);
     };
-  }, [resolvedSrc]);
+  }, [finalSrc]);
 
   return (
     <div
@@ -87,70 +101,66 @@ export function MediaTile({
         )}
       />
 
-      <div
-        className={cn(
-          "relative flex h-full w-full flex-col items-center justify-center gap-3 px-5 py-6 text-center transition-opacity duration-300",
-          hasImage && isLoaded ? "opacity-0" : "opacity-100"
-        )}
-      >
-        <div
-          className={cn(
-            "flex h-16 w-16 items-center justify-center rounded-full border font-serif text-xl tracking-[0.08em] shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur",
-            fallbackTone === "warm"
-              ? "border-white/55 bg-white/45 text-maroon"
-              : "border-white/20 bg-white/10 text-white"
-          )}
-        >
-          {initials}
-        </div>
-        <div className="space-y-1.5">
-          <p
+      {!isLoaded && !hasCustomImage ? (
+        <div className="relative flex h-full w-full flex-col items-center justify-center gap-3 px-5 py-6 text-center">
+          <div
             className={cn(
-              "line-clamp-2 font-serif text-lg leading-snug",
-              fallbackTone === "warm" ? "text-maroon/88" : "text-white"
+              "flex h-16 w-16 items-center justify-center rounded-full border font-serif text-xl tracking-[0.08em] shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur",
+              fallbackTone === "warm"
+                ? "border-white/55 bg-white/45 text-maroon"
+                : "border-white/20 bg-white/10 text-white"
             )}
           >
-            {label || alt}
-          </p>
-          <p
-            className={cn(
-              "text-[11px] font-semibold uppercase tracking-[0.24em]",
-              fallbackTone === "warm" ? "text-maroon/45" : "text-white/65"
-            )}
-          >
-            Güzel Café
-          </p>
+            {initials}
+          </div>
+          <div className="space-y-1.5">
+            <p
+              className={cn(
+                "line-clamp-2 font-serif text-lg leading-snug",
+                fallbackTone === "warm" ? "text-maroon/88" : "text-white"
+              )}
+            >
+              {label || alt}
+            </p>
+            <p
+              className={cn(
+                "text-[11px] font-semibold uppercase tracking-[0.24em]",
+                fallbackTone === "warm" ? "text-maroon/45" : "text-white/65"
+              )}
+            >
+              Güzel Café
+            </p>
+          </div>
         </div>
-      </div>
-
-      {hasImage ? (
-        <>
-          <img
-            ref={imgRef}
-            src={resolvedSrc!}
-            alt={alt}
-            loading={shouldUseEager ? "eager" : "lazy"}
-            decoding="async"
-            fetchPriority={shouldUseEager ? "high" : "auto"}
-            className={cn(
-              "absolute inset-0 h-full w-full transition duration-500",
-              contain ? "object-contain p-4" : "object-cover",
-              isLoaded ? "opacity-100" : "opacity-0",
-              imageClassName
-            )}
-            onError={() => setHasError(true)}
-            onLoad={() => setIsLoaded(true)}
-          />
-
-          {!isLoaded ? (
-            <div className="absolute inset-0 transition duration-300 opacity-100">
-              <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(255,255,255,0.08)_8%,rgba(255,255,255,0.36)_18%,rgba(255,255,255,0.08)_33%)] bg-[length:220%_100%]" />
-            </div>
-          ) : null}
-        </>
       ) : null}
 
-      
+      <img
+        ref={imgRef}
+        src={finalSrc}
+        alt={alt}
+        loading={shouldUseEager ? "eager" : "lazy"}
+        decoding="async"
+        fetchPriority={shouldUseEager ? "high" : "auto"}
+        className={cn(
+          "absolute inset-0 h-full w-full transition duration-500",
+          contain ? "object-contain p-4 bg-white" : "object-cover",
+          isLoaded ? "opacity-100" : "opacity-0",
+          imageClassName
+        )}
+        onError={() => {
+          if (finalSrc !== DEFAULT_FALLBACK_IMAGE) {
+            setHasError(true);
+            setIsLoaded(false);
+          }
+        }}
+        onLoad={() => setIsLoaded(true)}
+      />
+
+      {!isLoaded ? (
+        <div className="absolute inset-0 transition duration-300 opacity-100">
+          <div className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,rgba(255,255,255,0.08)_8%,rgba(255,255,255,0.36)_18%,rgba(255,255,255,0.08)_33%)] bg-[length:220%_100%]" />
+        </div>
+      ) : null}
     </div>
   );
 }

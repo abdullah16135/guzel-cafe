@@ -31,12 +31,16 @@ const settings: CafeSettings = {
   phone: null,
   instagram: null,
   tiktok: null,
+
   logo_media_id: "local-logo",
   logo_media: media("/images/logo/guzel-logo.jpg"),
-  hero_media_id: null,
-  hero_media: null,
+
+  hero_media_id: "local-hero",
+  hero_media: media("/images/banner/menu-banner.jpg"),
+
   banner_media_id: "local-banner",
   banner_media: media("/images/banner/menu-banner.jpg"),
+
   admin_email: null,
   default_language: "ar",
   show_language_switch: true,

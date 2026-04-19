@@ -20,20 +20,20 @@ function media(public_url: string) {
 
 const settings: CafeSettings = {
   id: "settings-local",
-  cafe_name_ar: "جوزيل كافيه",
-  cafe_name_en: "Güzel Café",
-  description_ar: "استمتع بتجربة مميزة من المشروبات والحلويات المختارة بعناية في جوزيل كافيه.",
-  description_en: "Enjoy a premium selection of drinks and desserts at Güzel Café.",
+  cafe_name_ar: "Güzel Cafe",
+  cafe_name_en: "Güzel Cafe",
+  description_ar: "استمتع بتجربة مميزة من المشروبات والحلويات المختارة بعناية في Güzel Cafe.",
+  description_en: "Enjoy a premium selection of drinks and desserts at Güzel Cafe.",
   location_text_ar: "مصر",
   location_text_en: "Egypt",
-  google_maps_link: "https://maps.app.goo.gl/ukU1ynQN8Ahi2KSa7",
+  google_maps_link: "",
   coordinates: null,
   phone: null,
   instagram: null,
   tiktok: null,
 
   logo_media_id: "local-logo",
-  logo_media: media("/images/logo/guzel-logo.jpg"),
+  logo_media: media("/images/logo/cafe-logo.png"),
 
   hero_media_id: "local-hero",
   hero_media: media("/images/banner/menu-banner.jpg"),
